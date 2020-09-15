@@ -17,6 +17,7 @@
 package com.intershop.icm.jobrunner
 
 import com.intershop.icm.jobrunner.utils.AssertionResult
+import com.intershop.icm.jobrunner.utils.JobRunnerException
 import org.codehaus.jettison.json.JSONException
 import org.codehaus.jettison.json.JSONObject
 import org.glassfish.jersey.client.authentication.HttpAuthenticationFeature
@@ -38,6 +39,7 @@ class JobRunner(val host: String, val port: String,
         val expectedEndStates = listOf("READY","DISABLED")
     }
 
+    @Throws(JobRunnerException::class)
     fun triggerJob(jobName: String) {
         val client = getClient()
 
@@ -54,7 +56,7 @@ class JobRunner(val host: String, val port: String,
             val jobInfo = try {
                 JSONObject(s)
             } catch (e: JSONException) {
-                throw RuntimeException("Retrieving job info failed: $e")
+                throw JobRunnerException("Retrieving job info failed: $e")
             }
             val status: String = jobInfo.optString("status")
             logger.info("  Started job: {}", jobName)
@@ -62,7 +64,7 @@ class JobRunner(val host: String, val port: String,
                 pollJobInfo(target, jobName, timeout)
             }
         } else {
-            throw RuntimeException("Error while communicating with server: " + assertion.summarize("; "))
+            throw JobRunnerException("Error while communicating with server: " + assertion.summarize("; "))
         }
 
     }
@@ -100,7 +102,7 @@ class JobRunner(val host: String, val port: String,
      * @param maxWait The maximum time to wait.
      * @return The last retrieved JobInfo
      */
-    @Throws(RuntimeException::class)
+    @Throws(JobRunnerException::class)
     private fun pollJobInfo( resource: WebTarget, jobName: String, maxWait: Long ): JSONObject? {
         logger.debug( "Polling status for {} until finished or timeout of {}ms reached", jobName, maxWait)
         waitFor(POLLINTERVAL)
@@ -124,7 +126,7 @@ class JobRunner(val host: String, val port: String,
                     oldStatus = status
                 }
                 if (System.currentTimeMillis() - startTime > maxWait) {
-                    throw RuntimeException("Job $jobName didn't finish within the maximum wait time of ${maxWait}ms")
+                    throw JobRunnerException("Job $jobName didn't finish within the maximum wait time of ${maxWait}ms")
                 }
             }
 
@@ -154,7 +156,7 @@ class JobRunner(val host: String, val port: String,
      * @param resource
      * @return
      */
-    @Throws(RuntimeException::class)
+    @Throws(JobRunnerException::class)
     private fun getJobInfo(resource: WebTarget): JSONObject? {
         val response = resource.request(MediaType.APPLICATION_JSON).get()
         val assertion = assertResponseStatus(response, 200, MediaType.APPLICATION_JSON_TYPE, true)
@@ -162,10 +164,10 @@ class JobRunner(val host: String, val port: String,
             return try {
                 JSONObject(response.readEntity(String::class.java))
             } catch (e: JSONException) {
-                throw RuntimeException("Retrieving job info failed: $e")
+                throw JobRunnerException("Retrieving job info failed: $e")
             }
         } else {
-            throw RuntimeException("Retrieving job info failed: " + assertion.summarize(";  "))
+            throw JobRunnerException("Retrieving job info failed: " + assertion.summarize(";  "))
         }
     }
 
