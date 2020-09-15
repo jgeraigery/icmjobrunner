@@ -1,7 +1,5 @@
 language: java
 sudo: true
-services:
-  - docker
 jdk:
   - openjdk8
 before_cache:
@@ -14,7 +12,6 @@ install:
   - ./gradlew assemble
 before_script:
   - echo -e "gradle.publish.key=$APIKEY\ngradle.publish.secret=$APISECRET" > $HOME/.gradle/gradle.properties
-  - docker login docker.intershop.de -u $DOCKERUSER -p $DOCKERPASSWD
 script:
   - ./buildTravis.sh
 notifications:
