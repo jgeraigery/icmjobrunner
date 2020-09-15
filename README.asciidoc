@@ -1,0 +1,5 @@
+Library to start an Intershop Commerce Management Job
+====
+
+There is on class with one methode. The main libraries are packed
+in one jar.
