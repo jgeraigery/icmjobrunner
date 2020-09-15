@@ -224,7 +224,7 @@ bintray {
         websiteUrl = "https://github.com/IntershopCommunicationsAG/${project.name}"
         issueTrackerUrl = "https://github.com/IntershopCommunicationsAG/${project.name}/issues"
 
-        setLabels("intershop", "gradle", "plugin", "build", "docker")
+        setLabels("intershop", "gradle", "lib")
         publicDownloadNumbers = true
 
         version(delegateClosureOf<BintrayExtension.VersionConfig> {
