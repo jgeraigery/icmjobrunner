@@ -42,6 +42,7 @@ scm {
 
 group = "com.intershop.gradle.jobrunner"
 description = "ICM JobRunner library to use in Gradle Plugins"
+version = scm.version.version
 
 java {
     withSourcesJar()
