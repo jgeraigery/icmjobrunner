@@ -81,6 +81,7 @@ tasks {
 
     val shadowJar = named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
         archiveClassifier.set("")
+
         mergeServiceFiles()
         configurations = listOf(shaded)
 
@@ -238,9 +239,9 @@ bintray {
 
 dependencies {
     shaded("jakarta.ws.rs:jakarta.ws.rs-api:2.1.6")
-    shaded("org.glassfish.jersey.core:jersey-client:2.29.1") {
+    shaded("org.glassfish.jersey.core:jersey-client:2.29.1") /** {
         exclude(group = "org.glassfish.hk2.external", module="jakarta.inject")
-    }
+    } */
     shaded("org.glassfish.jersey.media:jersey-media-json-jackson:2.29.1")
     shaded("org.codehaus.jettison:jettison:1.4.1")
 
