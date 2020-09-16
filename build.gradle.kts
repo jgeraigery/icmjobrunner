@@ -82,7 +82,6 @@ tasks {
     val shadowJar = named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
         archiveClassifier.set("")
         mergeServiceFiles()
-        minimize()
         configurations = listOf(shaded)
 
         dependsOn(relocateShadowJar)
