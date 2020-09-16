@@ -74,10 +74,10 @@ tasks {
         }
     }
 
-    val relocateShadowJar = register<com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation>("relocateShadowJar") {
-        target = shadowJar.get()
-        prefix = "intershop.shadow"
-    }
+    //val relocateShadowJar = register<com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation>("relocateShadowJar") {
+    //    target = shadowJar.get()
+    //    prefix = "intershop.shadow"
+    //}
 
     val shadowJar = named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
         archiveClassifier.set("")
@@ -85,7 +85,7 @@ tasks {
         mergeServiceFiles()
         configurations = listOf(shaded)
 
-        dependsOn(relocateShadowJar)
+        // dependsOn(relocateShadowJar)
     }
 
     named<Jar>("jar") {
