@@ -17,7 +17,8 @@ commons-httpclient:commons-httpclient:3.1
 excluded: org.glassfish.hk2.external:jakarta.inject
 ----
 
-The main class is `com.intershop.icm.jobrunner.JobRunner`. See Java Doc of this class. There is the possibility to disable the SSL verification.
+The main class is `com.intershop.icm.jobrunner.JobRunner`. See Java Doc of this class.
+There is the possibility to disable the SSL verification.
 
 == License
 

@@ -26,6 +26,6 @@ open class NoOpTrustManager: X509TrustManager {
     override fun checkServerTrusted(x509Certificates: Array<X509Certificate?>?, s: String?) {}
 
     override fun getAcceptedIssuers(): Array<X509Certificate?>? {
-        return arrayOfNulls<X509Certificate>(0)
+        return arrayOfNulls(0)
     }
 }

@@ -21,6 +21,6 @@ package com.intershop.icm.jobrunner.utils
  */
 enum class Protocol(val pname: String) {
 
-    http("http"),
-    https("https")
+    HTTP("http"),
+    HTTPS("https")
 }

@@ -43,7 +43,7 @@ import javax.ws.rs.core.Response
  * @param host  hostname of the web server
  * @param port  port of the webserver
  * @param domain Intershop domain
- * @param servergroup Intershop server group
+ * @param srvgroup Intershop server group
  * @param username SMC user with the permissions to start a job
  * @param password user password
  * @param timeout waiting time for the job execution
@@ -122,7 +122,7 @@ class JobRunner(
     }
 
     private fun getClient(): Client {
-        var client = if(sslVerification) {
+        val client = if(sslVerification) {
                          ClientBuilder.newClient()
                      } else {
                          ClientBuilder.newBuilder()
@@ -139,7 +139,7 @@ class JobRunner(
     private fun getWebTarget(client: Client, jobName: String) : WebTarget {
         val encJobName = URIUtil.encodePath(jobName)
 
-        val hostConnectStr = "${protocol}://${host}:${port}"
+        val hostConnectStr = "${protocol.pname}://${host}:${port}"
         val mainPath = "INTERSHOP/rest/${srvgroup}/SMC/-/domains/${domain}/jobs"
 
         val uri = "${hostConnectStr}/${mainPath}/${encJobName}"
