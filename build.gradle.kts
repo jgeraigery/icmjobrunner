@@ -74,18 +74,17 @@ tasks {
         }
     }
 
-    //val relocateShadowJar = register<com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation>("relocateShadowJar") {
-    //    target = shadowJar.get()
-    //    prefix = "intershop.shadow"
-    //}
+    val relocateShadowJar = register<com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation>("relocateShadowJar") {
+        target = shadowJar.get()
+        prefix = "intershop.shadow"
+    }
 
     val shadowJar = named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
         archiveClassifier.set("")
-
         mergeServiceFiles()
         configurations = listOf(shaded)
 
-        // dependsOn(relocateShadowJar)
+        dependsOn(relocateShadowJar)
     }
 
     named<Jar>("jar") {
@@ -244,6 +243,8 @@ dependencies {
     }
     shaded("org.glassfish.jersey.media:jersey-media-json-jackson:2.29.1")
     shaded("org.codehaus.jettison:jettison:1.4.1")
+    shaded("org.glassfish.jersey.inject:jersey-hk2:2.29.1")
+    shaded("commons-httpclient:commons-httpclient:3.1")
 
     compileOnly("org.slf4j:slf4j-api:1.7.30")
 }

@@ -1,5 +1,30 @@
-Library to start an Intershop Commerce Management Job
-====
+= Library to start an Intershop Commerce Management Job
+---
 
-There is on class with one methode. The main libraries are packed
-in one jar.
+The necessary libraries are packed and shaded in one jar.
+
+These are the main dependencies:
+
+[source]
+----
+jakarta.ws.rs:jakarta.ws.rs-api:2.1.6
+org.glassfish.jersey.core:jersey-client:2.29.1
+org.glassfish.jersey.media:jersey-media-json-jackson:2.29.1
+org.codehaus.jettison:jettison:1.4.1
+org.glassfish.jersey.inject:jersey-hk2:2.29.1
+commons-httpclient:commons-httpclient:3.1
+
+excluded: org.glassfish.hk2.external:jakarta.inject
+----
+
+The main class is `com.intershop.icm.jobrunner.JobRunner`. See Java Doc of this class. There is the possibility to disable the SSL verification.
+
+== License
+
+Copyright 2014-2020 Intershop Communications.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.

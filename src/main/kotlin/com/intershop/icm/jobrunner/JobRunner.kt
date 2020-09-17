@@ -16,29 +16,79 @@
  */
 package com.intershop.icm.jobrunner
 
-import com.intershop.icm.jobrunner.utils.AssertionResult
-import com.intershop.icm.jobrunner.utils.JobRunnerException
+import com.intershop.icm.jobrunner.utils.*
+import org.apache.commons.httpclient.util.URIUtil
 import org.codehaus.jettison.json.JSONException
 import org.codehaus.jettison.json.JSONObject
 import org.glassfish.jersey.client.authentication.HttpAuthenticationFeature
-import java.util.*
+import org.slf4j.Logger
+import java.security.KeyManagementException
+import java.security.NoSuchAlgorithmException
+import java.security.SecureRandom
+import javax.net.ssl.KeyManager
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
 import javax.ws.rs.client.Client
 import javax.ws.rs.client.ClientBuilder
 import javax.ws.rs.client.Entity
 import javax.ws.rs.client.WebTarget
 import javax.ws.rs.core.MediaType
 import javax.ws.rs.core.Response
-import org.slf4j.Logger
 
-class JobRunner(val host: String, val port: String,
-                val domain: String, val srvgroup: String, val username: String, val password: String,
-                val timeout: Long, val logger: Logger) {
+/**
+ * Main class for the execution of Intershop Commerce Management jobs
+ * over a Rest interface.
+ * @constructor prepares a configured instance of the runner
+ * @param protocol http or https
+ * @param host  hostname of the web server
+ * @param port  port of the webserver
+ * @param domain Intershop domain
+ * @param servergroup Intershop server group
+ * @param username SMC user with the permissions to start a job
+ * @param password user password
+ * @param timeout waiting time for the job execution
+ * @param logger slf4j logger instance for output
+ */
+class JobRunner(
+    private val protocol: Protocol, private val host: String, private val port: String,
+    private val domain: String, private val srvgroup: String,
+    private val username: String, private val password: String,
+    private val timeout: Long, private val logger: Logger) {
+
+    private var sslVerification = true
 
     companion object {
         const val POLLINTERVAL: Long = 15000
-        val expectedEndStates = listOf("READY","DISABLED")
+        private val expectedEndStates = listOf("READY", "DISABLED")
+
+        /**
+         * Configures SSL context for self signed certificates.
+         *
+         * @return an SSL context withour verification
+         */
+        @Throws(NoSuchAlgorithmException::class, KeyManagementException::class)
+        fun getSslContext(): SSLContext? {
+            val sslContext = SSLContext.getInstance("TLSv1")
+            val keyManagers: Array<KeyManager>? = null
+            val trustManager: Array<TrustManager> = arrayOf(NoOpTrustManager())
+            val secureRandom = SecureRandom()
+            sslContext.init(keyManagers, trustManager, secureRandom)
+            return sslContext
+        }
     }
 
+    /**
+     * Disable the SSL verification of the used client.
+     */
+    fun disableSSLVerification() {
+        sslVerification = false
+    }
+
+    /**
+     * Triggers the job identified by the name.
+     *
+     * @param jobName Name of the job - see SMC overview
+     */
     @Throws(JobRunnerException::class)
     fun triggerJob(jobName: String) {
         val client = getClient()
@@ -46,10 +96,12 @@ class JobRunner(val host: String, val port: String,
         val target = getWebTarget(client, jobName)
 
         val response = target.request(MediaType.APPLICATION_JSON).put(
-            Entity.entity( getPayLoad(jobName).toString(), MediaType.APPLICATION_JSON ), Response::class.java)
+            Entity.entity(getPayLoad(jobName).toString(), MediaType.APPLICATION_JSON), Response::class.java
+        )
 
         val assertion = assertResponseStatus(
-            response, 200, MediaType.APPLICATION_JSON_TYPE, true)
+            response, 200, MediaType.APPLICATION_JSON_TYPE, true
+        )
 
         if (assertion.succeeded()) {
             val s = response.readEntity(String::class.java)
@@ -70,21 +122,30 @@ class JobRunner(val host: String, val port: String,
     }
 
     private fun getClient(): Client {
-        val client: Client = ClientBuilder.newClient()
-        val feature: HttpAuthenticationFeature = HttpAuthenticationFeature.universalBuilder()
-            .credentialsForBasic(username, password)
-            .credentials(username, password).build()
+        var client = if(sslVerification) {
+                         ClientBuilder.newClient()
+                     } else {
+                         ClientBuilder.newBuilder()
+                                .sslContext(getSslContext())
+                                .hostnameVerifier(NoOpHostnameVerifier()).build()
+                     }
 
+        val feature = HttpAuthenticationFeature.basic(username, password)
         client.register(feature)
 
         return client
     }
 
-    private fun getWebTarget(client: Client , jobName: String) : WebTarget {
-        val encJobName = Base64.getUrlEncoder().encodeToString(jobName.toByteArray())
+    private fun getWebTarget(client: Client, jobName: String) : WebTarget {
+        val encJobName = URIUtil.encodePath(jobName)
 
-        return client.target(
-            "http://${host}:${port}/INTERSHOP/rest/${srvgroup}/SMC/-/domains/${domain}/jobs/${encJobName}")
+        val hostConnectStr = "${protocol}://${host}:${port}"
+        val mainPath = "INTERSHOP/rest/${srvgroup}/SMC/-/domains/${domain}/jobs"
+
+        val uri = "${hostConnectStr}/${mainPath}/${encJobName}"
+        logger.debug("Request  {}", uri)
+
+        return client.target(uri)
     }
 
     private fun getPayLoad(jobName: String): JSONObject {
@@ -103,8 +164,8 @@ class JobRunner(val host: String, val port: String,
      * @return The last retrieved JobInfo
      */
     @Throws(JobRunnerException::class)
-    private fun pollJobInfo( resource: WebTarget, jobName: String, maxWait: Long ): JSONObject? {
-        logger.debug( "Polling status for {} until finished or timeout of {}ms reached", jobName, maxWait)
+    private fun pollJobInfo(resource: WebTarget, jobName: String, maxWait: Long): JSONObject? {
+        logger.debug("Polling status for {} until finished or timeout of {}ms reached", jobName, maxWait)
         waitFor(POLLINTERVAL)
 
         var jobInfo: JSONObject? = getJobInfo(resource)
@@ -182,16 +243,21 @@ class JobRunner(val host: String, val port: String,
      */
     private fun assertResponseStatus(
         response: Response, expectedStatusCode: Int,
-        expectedType: MediaType?, requireContent: Boolean ): AssertionResult {
+        expectedType: MediaType?, requireContent: Boolean
+    ): AssertionResult {
 
         val result = AssertionResult()
         if (expectedStatusCode != response.status) {
-            result.addFailure("Call returned status code {} ({}). Expected {}.",
-                response.status, Response.Status.fromStatusCode(response.status).reasonPhrase, expectedStatusCode)
+            result.addFailure(
+                "Call returned status code {} ({}). Expected {}.",
+                response.status, Response.Status.fromStatusCode(response.status).reasonPhrase, expectedStatusCode
+            )
         }
         if (expectedType != null && expectedType != response.mediaType) {
-            result.addFailure("Call returned wrong content type '{}'. Expected {}.",
-                response.mediaType, expectedType)
+            result.addFailure(
+                "Call returned wrong content type '{}'. Expected {}.",
+                response.mediaType, expectedType
+            )
         }
         if (requireContent && !response.hasEntity()) {
             result.addFailure("Call returned no content.")

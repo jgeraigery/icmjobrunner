@@ -14,7 +14,6 @@
  * limitations under the License.
  *
  */
-
 package com.intershop.icm.jobrunner.utils
 
 import java.util.*
