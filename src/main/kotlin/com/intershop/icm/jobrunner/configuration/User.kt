@@ -14,14 +14,6 @@
  * limitations under the License.
  *
  */
-package com.intershop.icm.jobrunner.utils
+package com.intershop.icm.jobrunner.configuration
 
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.SSLSession
-
-class NoOpHostnameVerifier : HostnameVerifier {
-
-    override fun verify(s: String?, sslSession: SSLSession?): Boolean {
-        return true
-    }
-}
+data class User(val name: String, val password: String)

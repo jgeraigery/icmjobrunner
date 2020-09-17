@@ -16,7 +16,13 @@
  */
 package com.intershop.icm.jobrunner
 
-import com.intershop.icm.jobrunner.utils.*
+import com.intershop.icm.jobrunner.configuration.Server
+import com.intershop.icm.jobrunner.configuration.User
+import com.intershop.icm.jobrunner.utils.AssertionResult
+import com.intershop.icm.jobrunner.utils.JobRunnerException
+import com.intershop.icm.jobrunner.utils.NoOpHostnameVerifier
+import com.intershop.icm.jobrunner.utils.NoOpTrustManager
+import com.intershop.icm.jobrunner.utils.Protocol
 import org.apache.commons.httpclient.util.URIUtil
 import org.codehaus.jettison.json.JSONException
 import org.codehaus.jettison.json.JSONObject
@@ -50,10 +56,8 @@ import javax.ws.rs.core.Response
  * @param logger slf4j logger instance for output
  */
 class JobRunner(
-    private val protocol: Protocol, private val host: String, private val port: String,
-    private val domain: String, private val srvgroup: String,
-    private val username: String, private val password: String,
-    private val timeout: Long, private val logger: Logger) {
+    private val server: Server, private val domain: String, private val srvgroup: String,
+    private val user: User, private val timeout: Long, private val logger: Logger) {
 
     private var sslVerification = true
 
@@ -130,7 +134,11 @@ class JobRunner(
                                 .hostnameVerifier(NoOpHostnameVerifier()).build()
                      }
 
-        val feature = HttpAuthenticationFeature.basic(username, password)
+        if(user.name.isNullOrEmpty() || user.password.isNullOrEmpty()) {
+            throw JobRunnerException("User is not configured.")
+        }
+
+        val feature = HttpAuthenticationFeature.basic(user.name, user.password)
         client.register(feature)
 
         return client
@@ -138,8 +146,7 @@ class JobRunner(
 
     private fun getWebTarget(client: Client, jobName: String) : WebTarget {
         val encJobName = URIUtil.encodePath(jobName)
-
-        val hostConnectStr = "${protocol.pname}://${host}:${port}"
+        val hostConnectStr = "${server.protocol.pname}://${server.host}:${server.port}"
         val mainPath = "INTERSHOP/rest/${srvgroup}/SMC/-/domains/${domain}/jobs"
 
         val uri = "${hostConnectStr}/${mainPath}/${encJobName}"

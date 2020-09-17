@@ -14,14 +14,10 @@
  * limitations under the License.
  *
  */
-package com.intershop.icm.jobrunner.utils
+package com.intershop.icm.jobrunner.configuration
 
-import javax.net.ssl.HostnameVerifier
-import javax.net.ssl.SSLSession
+import com.intershop.icm.jobrunner.utils.Protocol
 
-class NoOpHostnameVerifier : HostnameVerifier {
-
-    override fun verify(s: String?, sslSession: SSLSession?): Boolean {
-        return true
-    }
-}
+data class Server(val protocol: Protocol = Protocol.HTTP,
+                  val host: String = "localhost",
+                  val port: String = "80" )
