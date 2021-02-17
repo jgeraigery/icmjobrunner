@@ -228,6 +228,10 @@ publishing {
     }
 }
 
+signing {
+    sign(publishing.publications["intershopMvn"])
+}
+
 dependencies {
     shaded("jakarta.ws.rs:jakarta.ws.rs-api:2.1.6")
     shaded("org.glassfish.jersey.core:jersey-client:2.29.1") {
