@@ -1,6 +1,5 @@
 import org.asciidoctor.gradle.jvm.AsciidoctorTask
 import org.jetbrains.dokka.gradle.DokkaTask
-import java.util.Date
 
 plugins {
     `java-library`
