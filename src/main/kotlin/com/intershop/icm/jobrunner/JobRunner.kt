@@ -127,11 +127,11 @@ class JobRunner(
 
     private fun getClient(): Client {
         val client = if(sslVerification) {
-                         ClientBuilder.newClient()
+                        ClientBuilder.newBuilder()
+                            .sslContext(getSslContext())
+                            .hostnameVerifier(NoOpHostnameVerifier()).build()
                      } else {
-                         ClientBuilder.newBuilder()
-                                .sslContext(getSslContext())
-                                .hostnameVerifier(NoOpHostnameVerifier()).build()
+                        ClientBuilder.newClient()
                      }
 
         if(user.name.isNullOrEmpty() || user.password.isNullOrEmpty()) {
