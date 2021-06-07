@@ -59,7 +59,7 @@ class JobRunner(
     private val server: Server, private val domain: String, private val srvgroup: String,
     private val user: User, private val timeout: Long, private val logger: Logger) {
 
-    private var sslVerification = true
+    private var pSSLVerification = false
 
     companion object {
         const val POLLINTERVAL: Long = 15000
@@ -82,11 +82,17 @@ class JobRunner(
     }
 
     /**
-     * Disable the SSL verification of the used client.
+     * Enable the SSL verification of the used client.
      */
-    fun disableSSLVerification() {
-        sslVerification = false
+    fun enableSSLVerification() {
+        sslVerification = true
     }
+
+    var sslVerification: Boolean
+        get() = pSSLVerification
+        set(value) {
+            pSSLVerification = value
+        }
 
     /**
      * Triggers the job identified by the name.
