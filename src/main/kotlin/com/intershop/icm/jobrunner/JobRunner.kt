@@ -72,7 +72,7 @@ class JobRunner(
          */
         @Throws(NoSuchAlgorithmException::class, KeyManagementException::class)
         fun getSslContext(): SSLContext? {
-            val sslContext = SSLContext.getInstance("TLSv1")
+            val sslContext = SSLContext.getInstance("TLS")
             val keyManagers: Array<KeyManager>? = null
             val trustManager: Array<TrustManager> = arrayOf(NoOpTrustManager())
             val secureRandom = SecureRandom()
