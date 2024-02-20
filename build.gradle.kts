@@ -1,12 +1,8 @@
 import org.asciidoctor.gradle.jvm.AsciidoctorTask
-import org.jetbrains.dokka.gradle.DokkaTask
 
 plugins {
     `java-library`
-    kotlin("jvm") version "1.4.20"
-
-    // project plugins
-    groovy
+    kotlin("jvm") version "1.9.22"
 
     // test coverage
     jacoco
@@ -20,87 +16,40 @@ plugins {
     // artifact signing - necessary on Maven Central
     signing
 
-    // intershop version plugin
-    id("com.intershop.gradle.scmversion") version "6.2.0"
-
-    id("com.github.johnrengelman.shadow") version "6.1.0"
-
     // plugin for documentation
-    id("org.asciidoctor.jvm.convert") version "3.3.0"
+    id("org.asciidoctor.jvm.convert") version "3.3.2"
 
     // documentation
-    id("org.jetbrains.dokka") version "0.10.1"
-
-    // code analysis for kotlin
-    id("io.gitlab.arturbosch.detekt") version "1.15.0"
-}
-
-scm {
-    version.initialVersion = "1.0.0"
+    id("org.jetbrains.dokka") version "1.9.10"
 }
 
 group = "com.intershop.gradle.jobrunner"
 description = "ICM JobRunner library to use in Gradle Plugins"
-version = scm.version.version
+// apply gradle property 'projectVersion' to project.version, default to 'LOCAL'
+val projectVersion : String? by project
+version = projectVersion ?: "LOCAL"
 
-val sonatypeUsername: String by project
+val sonatypeUsername: String? by project
 val sonatypePassword: String? by project
 
 java {
     withSourcesJar()
-}
-
-configure<JavaPluginConvention> {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
+    withJavadocJar()
+    toolchain {
+        languageVersion.set(JavaLanguageVersion.of(17))
+    }
 }
 
 // set correct project status
 if (project.version.toString().endsWith("-SNAPSHOT")) {
-    status = "snapshot'"
+    status = "snapshot"
 }
-
-detekt {
-    input = files("src/main/kotlin")
-    config = files("detekt.yml")
-}
-
-val shaded by configurations.creating
-val compileOnly = configurations.getByName("implementation")
-compileOnly.extendsFrom(shaded)
 
 tasks {
-    withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
-        kotlinOptions {
-            jvmTarget = "1.8"
-        }
-    }
-
-    val relocateShadowJar = register<com.github.jengelman.gradle.plugins.shadow.tasks.ConfigureShadowRelocation>("relocateShadowJar") {
-        target = shadowJar.get()
-        prefix = "intershop.shadow"
-    }
-
-    val shadowJar = named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
-        archiveClassifier.set("")
-        mergeServiceFiles()
-        configurations = listOf(shaded)
-
-        dependsOn(relocateShadowJar)
-    }
-
-    named<Jar>("jar") {
-        enabled = false
-    }
-
-    named<Task>("assemble") {
-        dependsOn(shadowJar)
-    }
-
-    val copyAsciiDoc = register<Copy>("copyAsciiDoc") {
+    val copyAsciiDocTask = register<Copy>("copyAsciiDoc") {
         includeEmptyDirs = false
 
-        val outputDir = file("$buildDir/tmp/asciidoctorSrc")
+        val outputDir = project.layout.buildDirectory.dir("tmp/asciidoctorSrc")
         val inputFiles = fileTree(rootDir) {
             include("**/*.asciidoc")
             exclude("build/**")
@@ -110,7 +59,7 @@ tasks {
         outputs.dir( outputDir )
 
         doFirst {
-            outputDir.mkdir()
+            outputDir.get().asFile.mkdir()
         }
 
         from(inputFiles)
@@ -118,19 +67,24 @@ tasks {
     }
 
     withType<AsciidoctorTask> {
-        dependsOn(copyAsciiDoc)
-
-        setSourceDir(file("$buildDir/tmp/asciidoctorSrc"))
-        sources(delegateClosureOf<PatternSet> {
-            include("README.asciidoc")
+        dependsOn(copyAsciiDocTask)
+        sourceDirProperty.set(project.provider<Directory>{
+            val dir = project.objects.directoryProperty()
+            dir.set(copyAsciiDocTask.get().outputs.files.first())
+            dir.get()
         })
+        sources {
+            include("README.asciidoc")
+        }
 
         outputOptions {
             setBackends(listOf("html5", "docbook"))
         }
 
-        options = mapOf( "doctype" to "article",
-            "ruby"    to "erubis")
+        options = mapOf(
+            "doctype" to "article",
+            "ruby"    to "erubis"
+        )
         attributes = mapOf(
             "latestRevision"        to  project.version,
             "toc"                   to "left",
@@ -140,47 +94,46 @@ tasks {
             "setanchors"            to "true",
             "idprefix"              to "asciidoc",
             "idseparator"           to "-",
-            "docinfo1"              to "true")
+            "docinfo1"              to "true"
+        )
     }
 
-    getByName("shadowJar").dependsOn("asciidoctor")
-
-    val dokka by existing(DokkaTask::class) {
-        outputFormat = "javadoc"
-        outputDirectory = "$buildDir/javadoc"
-
-        // Java 8 is only version supported both by Oracle/OpenJDK and Dokka itself
-        // https://github.com/Kotlin/dokka/issues/294
-        enabled = JavaVersion.current().isJava8
+    jar.configure {
+        dependsOn(asciidoctor)
     }
 
-    register<Jar>("sourceJar") {
-        description = "Creates a JAR that co" +
-                "ntains the source code."
-
-        from(sourceSets.getByName("main").allSource)
-        archiveClassifier.set("sources")
+    dokkaJavadoc.configure {
+        outputDirectory.set(project.layout.buildDirectory.dir("javadoc"))
     }
 
-    register<Jar>("javaDoc") {
-        dependsOn(dokka)
-        from(dokka)
-        archiveClassifier.set("javadoc")
+    withType<Sign> {
+        val sign = this
+        withType<PublishToMavenLocal> {
+            this.dependsOn(sign)
+        }
+        withType<PublishToMavenRepository> {
+            this.dependsOn(sign)
+        }
+    }
+
+    afterEvaluate {
+        named<Jar>("javadocJar") {
+            dependsOn(dokkaJavadoc)
+            from(dokkaJavadoc)
+        }
     }
 }
 
 publishing {
     publications {
         create("intershopMvn", MavenPublication::class.java) {
-            artifact(tasks.getByName("shadowJar"))
-            artifact(tasks.getByName("sourceJar"))
-            artifact(tasks.getByName("javaDoc"))
+            from(components["java"])
 
-            artifact(File(buildDir, "docs/asciidoc/html5/README.html")) {
+            artifact(project.layout.buildDirectory.file("docs/asciidoc/html5/README.html")) {
                 classifier = "reference"
             }
 
-            artifact(File(buildDir, "docs/asciidoc/docbook/README.xml")) {
+            artifact(project.layout.buildDirectory.file("docs/asciidoc/docbook/README.xml")) {
                 classifier = "docbook"
             }
 
@@ -232,20 +185,12 @@ signing {
 }
 
 dependencies {
-    shaded("jakarta.ws.rs:jakarta.ws.rs-api:2.1.6")
-    shaded("org.glassfish.jersey.core:jersey-client:2.29.1") {
-        exclude(group = "org.glassfish.hk2.external", module="jakarta.inject")
-    }
-    shaded("org.glassfish.jersey.media:jersey-media-json-jackson:2.29.1")
-    shaded("org.codehaus.jettison:jettison:1.4.1")
-    shaded("org.glassfish.jersey.inject:jersey-hk2:2.29.1")
-    shaded("commons-httpclient:commons-httpclient:3.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 
-    compileOnly("org.slf4j:slf4j-api:1.7.30")
+    compileOnly("org.slf4j:slf4j-api:2.0.9")
 }
 
 repositories {
+    mavenLocal()
     mavenCentral()
-    // necessary for detect
-    jcenter()
 }

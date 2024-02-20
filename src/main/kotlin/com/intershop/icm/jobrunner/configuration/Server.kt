@@ -20,4 +20,4 @@ import com.intershop.icm.jobrunner.utils.Protocol
 
 data class Server(val protocol: Protocol = Protocol.HTTP,
                   val host: String = "localhost",
-                  val port: String = "80" )
+                  val port: Int = 80 )

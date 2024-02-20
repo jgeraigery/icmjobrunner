@@ -19,44 +19,39 @@ package com.intershop.icm.jobrunner
 import com.intershop.icm.jobrunner.configuration.Server
 import com.intershop.icm.jobrunner.configuration.User
 import com.intershop.icm.jobrunner.utils.AssertionResult
+import com.intershop.icm.jobrunner.utils.JobInfo
 import com.intershop.icm.jobrunner.utils.JobRunnerException
-import com.intershop.icm.jobrunner.utils.NoOpHostnameVerifier
 import com.intershop.icm.jobrunner.utils.NoOpTrustManager
-import com.intershop.icm.jobrunner.utils.Protocol
-import org.apache.commons.httpclient.util.URIUtil
-import org.codehaus.jettison.json.JSONException
-import org.codehaus.jettison.json.JSONObject
-import org.glassfish.jersey.client.authentication.HttpAuthenticationFeature
 import org.slf4j.Logger
+import java.net.URI
+import java.net.URLEncoder
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpRequest.BodyPublishers
+import java.net.http.HttpResponse
+import java.net.http.HttpResponse.BodyHandlers
+import java.nio.charset.StandardCharsets
 import java.security.KeyManagementException
 import java.security.NoSuchAlgorithmException
 import java.security.SecureRandom
+import java.util.Base64
 import javax.net.ssl.KeyManager
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
-import javax.ws.rs.client.Client
-import javax.ws.rs.client.ClientBuilder
-import javax.ws.rs.client.Entity
-import javax.ws.rs.client.WebTarget
-import javax.ws.rs.core.MediaType
-import javax.ws.rs.core.Response
 
 /**
  * Main class for the execution of Intershop Commerce Management jobs
  * over a Rest interface.
  * @constructor prepares a configured instance of the runner
- * @param protocol http or https
- * @param host  hostname of the web server
- * @param port  port of the webserver
+ * @param server the server to be used
  * @param domain Intershop domain
- * @param srvgroup Intershop server group
- * @param username SMC user with the permissions to start a job
- * @param password user password
+ * @param srvGroup Intershop server group
+ * @param user SMC user with the permissions to start a job
  * @param timeout waiting time for the job execution
  * @param logger slf4j logger instance for output
  */
 class JobRunner(
-    private val server: Server, private val domain: String, private val srvgroup: String,
+    private val server: Server, private val domain: String, private val srvGroup: String,
     private val user: User, private val timeout: Long, private val logger: Logger) {
 
     private var pSSLVerification = false
@@ -64,6 +59,10 @@ class JobRunner(
     companion object {
         const val POLLINTERVAL: Long = 15000
         private val expectedEndStates = listOf("READY", "DISABLED")
+        private const val HEADER_ACCEPT = "Accept"
+        private const val HEADER_CONTENT_TYPE = "Content-Type"
+        private const val HEADER_AUTHORIZATION = "Authorization"
+        private const val CONTENT_TYPE_JSON = "application/json"
 
         /**
          * Configures SSL context for self signed certificates.
@@ -71,7 +70,7 @@ class JobRunner(
          * @return an SSL context withour verification
          */
         @Throws(NoSuchAlgorithmException::class, KeyManagementException::class)
-        fun getSslContext(): SSLContext? {
+        fun getSslContext(): SSLContext {
             val sslContext = SSLContext.getInstance("TLS")
             val keyManagers: Array<KeyManager>? = null
             val trustManager: Array<TrustManager> = arrayOf(NoOpTrustManager())
@@ -103,27 +102,20 @@ class JobRunner(
     fun triggerJob(jobName: String) {
         val client = getClient()
 
-        val target = getWebTarget(client, jobName)
+        val requestBuilder = requestBuilder(jobName)
 
-        val response = target.request(MediaType.APPLICATION_JSON).put(
-            Entity.entity(getPayLoad(jobName).toString(), MediaType.APPLICATION_JSON), Response::class.java
-        )
+
+        val response = client.send(requestBuilder.PUT(BodyPublishers.ofString(getPayLoad(jobName).render())).build(), BodyHandlers.ofString())
 
         val assertion = assertResponseStatus(
-            response, 200, MediaType.APPLICATION_JSON_TYPE, true
+            response, 200, CONTENT_TYPE_JSON, true
         )
 
         if (assertion.succeeded()) {
-            val s = response.readEntity(String::class.java)
-            val jobInfo = try {
-                JSONObject(s)
-            } catch (e: JSONException) {
-                throw JobRunnerException("Retrieving job info failed: $e")
-            }
-            val status: String = jobInfo.optString("status")
+            val jobInfo = JobInfo.parse(response.body())
             logger.info("  Started job: {}", jobName)
-            if (!expectedEndStates.contains(status)) {
-                pollJobInfo(target, jobName, timeout)
+            if (!expectedEndStates.contains(jobInfo.status)) {
+                pollJobInfo(client, requestBuilder, jobName, timeout)
             }
         } else {
             throw JobRunnerException("Error while communicating with server: " + assertion.summarize("; "))
@@ -131,89 +123,77 @@ class JobRunner(
 
     }
 
-    private fun getClient(): Client {
-        val client = if(sslVerification) {
-                        ClientBuilder.newBuilder()
-                            .sslContext(getSslContext())
-                            .hostnameVerifier(NoOpHostnameVerifier()).build()
-                     } else {
-                        ClientBuilder.newClient()
-                     }
+    private fun getClient(): HttpClient {
 
-        if(user.name.isNullOrEmpty() || user.password.isNullOrEmpty()) {
+        val clientBuilder = HttpClient.newBuilder()
+        if(sslVerification) {
+            clientBuilder.sslContext(getSslContext())
+        }
+        return clientBuilder.build()
+    }
+
+    private fun requestBuilder(jobName: String) : HttpRequest.Builder {
+        val hostConnectStr = "${server.protocol.pname}://${server.host}:${server.port}"
+        val mainPath = "INTERSHOP/rest/${srvGroup}/SMC/-/domains/${domain}/jobs"
+        val encJobName = URLEncoder.encode(jobName, StandardCharsets.UTF_8)
+
+        val uri = URI.create("${hostConnectStr}/${mainPath}/${encJobName}")
+
+        logger.debug("Sending request to {}", uri)
+
+        if(user.name.isEmpty() || user.password.isEmpty()) {
             throw JobRunnerException("User is not configured.")
         }
+        val authHeader = "Basic " + Base64.getEncoder().encodeToString("${user.name}:${user.password}".toByteArray(StandardCharsets.UTF_8))
 
-        val feature = HttpAuthenticationFeature.basic(user.name, user.password)
-        client.register(feature)
-
-        return client
+        return HttpRequest
+            .newBuilder(uri)
+            .header(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON)
+            .header(HEADER_ACCEPT, CONTENT_TYPE_JSON)
+            .header(HEADER_AUTHORIZATION, authHeader)
     }
 
-    private fun getWebTarget(client: Client, jobName: String) : WebTarget {
-        val encJobName = URIUtil.encodePath(jobName)
-        val hostConnectStr = "${server.protocol.pname}://${server.host}:${server.port}"
-        val mainPath = "INTERSHOP/rest/${srvgroup}/SMC/-/domains/${domain}/jobs"
-
-        val uri = "${hostConnectStr}/${mainPath}/${encJobName}"
-        logger.debug("Request  {}", uri)
-
-        return client.target(uri)
-    }
-
-    private fun getPayLoad(jobName: String): JSONObject {
-        val pl = JSONObject()
-        pl.put("name", jobName)
-        pl.put("status", "RUNNING")
-        return pl
-    }
+    private fun getPayLoad(jobName: String): JobInfo = JobInfo(jobName, "RUNNING")
 
     /**
      * Poll a given resource for a JobInfo object, until an acceptable end state is reached,
      * or the maximum time to wait is exceeded.
-     * @param resource The resource providing the JobInfo
+     * @param requestBuilder a request builder preconfigured for the job-resource
      * @param jobName Job name
      * @param maxWait The maximum time to wait.
      * @return The last retrieved JobInfo
      */
     @Throws(JobRunnerException::class)
-    private fun pollJobInfo(resource: WebTarget, jobName: String, maxWait: Long): JSONObject? {
+    private fun pollJobInfo(client : HttpClient, requestBuilder: HttpRequest.Builder, jobName: String, maxWait: Long): JobInfo {
         logger.debug("Polling status for {} until finished or timeout of {}ms reached", jobName, maxWait)
         waitFor(POLLINTERVAL)
 
-        var jobInfo: JSONObject? = getJobInfo(resource)
-        if(jobInfo != null) {
-            var status = jobInfo.optString("status")
+        var jobInfo = getJobInfo(client, requestBuilder)
+        logger.info("Status of {} is now {}", jobName, jobInfo.status)
+        var oldStatus = jobInfo.status
+        val startTime = System.currentTimeMillis()
 
-            logger.info("Status of {} is now {}", jobName, status)
-            var oldStatus = status
-            val startTime = System.currentTimeMillis()
+        while (!expectedEndStates.contains(jobInfo.status)) {
+            waitFor(POLLINTERVAL)
 
-            while (!expectedEndStates.contains(status)) {
-                waitFor(POLLINTERVAL)
+            jobInfo = getJobInfo(client, requestBuilder)
 
-                jobInfo = getJobInfo(resource)
-                status = jobInfo?.optString("status")
-                logger.trace("{} returned status {}", resource.uri.toString(), status)
-                if (oldStatus != status) {
-                    logger.info("Status of {} is now {}  ", jobName, status)
-                    oldStatus = status
-                }
-                if (System.currentTimeMillis() - startTime > maxWait) {
-                    throw JobRunnerException("Job $jobName didn't finish within the maximum wait time of ${maxWait}ms")
-                }
+            logger.trace("{} returned status {}", requestBuilder.build().uri().toString(), jobInfo.status)
+            if (oldStatus != jobInfo.status) {
+                logger.info("Status of {} is now {}  ", jobName, jobInfo.status)
+                oldStatus = jobInfo.status
             }
-
-            if(jobInfo != null) {
-                logger.info(" Job {} returned with finish status {}", jobName, status)
-                val processInfo = jobInfo.optJSONObject("process")
-                if (processInfo != null) {
-                    with(processInfo) {
-                        logger.info("{} after {}ms", optString("status"), optLong("duration"))
-                    }
-                }
+            if (System.currentTimeMillis() - startTime > maxWait) {
+                throw JobRunnerException("Job $jobName didn't finish within the maximum wait time of ${maxWait}ms")
             }
         }
+
+        logger.info(" Job {} returned with finish status {}", jobName, jobInfo.status)
+        val processInfo = jobInfo.process
+        processInfo?.run {
+            logger.info("{} after {}ms", status, duration)
+        }
+
         return jobInfo
     }
 
@@ -221,7 +201,8 @@ class JobRunner(
         try {
             Thread.sleep(pollingIntervalMillis)
         } catch (e: InterruptedException) {
-            // can be ignored
+            Thread.currentThread().interrupt()
+            throw IllegalStateException("Interrupted during sleep", e)
         }
     }
 
@@ -231,15 +212,11 @@ class JobRunner(
      * @return
      */
     @Throws(JobRunnerException::class)
-    private fun getJobInfo(resource: WebTarget): JSONObject? {
-        val response = resource.request(MediaType.APPLICATION_JSON).get()
-        val assertion = assertResponseStatus(response, 200, MediaType.APPLICATION_JSON_TYPE, true)
+    private fun getJobInfo(client : HttpClient, requestBuilder: HttpRequest.Builder): JobInfo {
+        val response = client.send(requestBuilder.GET().build(), BodyHandlers.ofString())
+        val assertion = assertResponseStatus(response, 200, CONTENT_TYPE_JSON, true)
         if (assertion.succeeded()) {
-            return try {
-                JSONObject(response.readEntity(String::class.java))
-            } catch (e: JSONException) {
-                throw JobRunnerException("Retrieving job info failed: $e")
-            }
+            return JobInfo.parse(response.body())
         } else {
             throw JobRunnerException("Retrieving job info failed: " + assertion.summarize(";  "))
         }
@@ -255,24 +232,32 @@ class JobRunner(
      * @return an AssertionResult containing the boolean result and the list of validation failure messages
      */
     private fun assertResponseStatus(
-        response: Response, expectedStatusCode: Int,
-        expectedType: MediaType?, requireContent: Boolean
+        response: HttpResponse<String>, expectedStatusCode: Int,
+        expectedType: String, requireContent: Boolean
     ): AssertionResult {
 
         val result = AssertionResult()
-        if (expectedStatusCode != response.status) {
+        if (expectedStatusCode != response.statusCode()) {
             result.addFailure(
-                "Call returned status code {} ({}). Expected {}.",
-                response.status, Response.Status.fromStatusCode(response.status).reasonPhrase, expectedStatusCode
+                "Call returned status code {}. Expected {}.",
+                response.statusCode(), expectedStatusCode
             )
         }
-        if (expectedType != null && expectedType != response.mediaType) {
+
+
+        val contentType = response.headers().firstValue(HEADER_CONTENT_TYPE).orElse(null)
+        if (contentType.isNullOrBlank()) {
             result.addFailure(
-                "Call returned wrong content type '{}'. Expected {}.",
-                response.mediaType, expectedType
+                "Call response is missing a content type. Expected {}.", expectedType
             )
         }
-        if (requireContent && !response.hasEntity()) {
+
+        if (!contentType.startsWith(expectedType, ignoreCase = true)) {
+            result.addFailure(
+                "Call returned wrong content type '{}'. Expected {}.", contentType, expectedType
+            )
+        }
+        if (requireContent && response.body().isNullOrBlank()) {
             result.addFailure("Call returned no content.")
         }
         return result

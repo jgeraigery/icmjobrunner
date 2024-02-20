@@ -16,8 +16,6 @@
  */
 package com.intershop.icm.jobrunner.utils
 
-import java.util.*
-
 /**
  * Provides a way to store the results of a validation or assertion in a structured way.
  */
@@ -35,7 +33,7 @@ open class AssertionResult {
     fun addFailure(message: String, vararg variables: Any) {
         var m = message
         for (i in variables.indices) {
-            m = m.replaceFirst( "\\{\\}".toRegex(), variables[i].toString() )
+            m = m.replaceFirst( "\\{}".toRegex(), variables[i].toString() )
         }
 
         failures.add(m)
@@ -52,14 +50,14 @@ open class AssertionResult {
     /**
      * @return the list of failure messages (never null)
      */
-    fun getFailures(): List<String>? {
+    fun getFailures(): List<String> {
         return failures
     }
 
     /**
      * @return all failure messages concatenated by a new line character
      */
-    fun summarize(): String? {
+    fun summarize(): String {
         return summarize("\n")
     }
 
@@ -67,7 +65,7 @@ open class AssertionResult {
      * @param separator
      * @return all failure messages concatenated by the given separator
      */
-    fun summarize(separator: String?): String? {
+    fun summarize(separator: String?): String {
         val sb = StringBuilder()
         if (!valid) {
             var first = true
