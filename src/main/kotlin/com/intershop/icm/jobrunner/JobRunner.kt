@@ -132,10 +132,14 @@ class JobRunner(
         return clientBuilder.build()
     }
 
+    private fun encodePathEntry(jobName: String) : String {
+        return URLEncoder.encode(jobName.replace("\\+", "%2B"), StandardCharsets.UTF_8).replace("\\+", "%20").replace("%252B", "+");
+    }
+
     private fun requestBuilder(jobName: String) : HttpRequest.Builder {
         val hostConnectStr = "${server.protocol.pname}://${server.host}:${server.port}"
         val mainPath = "INTERSHOP/rest/${srvGroup}/SMC/-/domains/${domain}/jobs"
-        val encJobName = URLEncoder.encode(jobName, StandardCharsets.UTF_8)
+        val encJobName = encodePathEntry(jobName);
 
         val uri = URI.create("${hostConnectStr}/${mainPath}/${encJobName}")
 
